@@ -1,0 +1,550 @@
+<html>
+<head>
+
+<!-- CM Post-VSS 2018 edits: NOT the final version of Scorses! WOrking on it in plane, added masks to see how it looks. Might create nw search 5 and run to see difference.-->
+
+<!-- when displayed within the mturk window, the url of your experiment will include parameters, e.g.,
+	https://scorsese.wjh.harvard.edu/turk/experiments/gaa/oops/?assignmentId=3K5TEWLKGVBYBE70241OAAC6EUGVI8&hitId=3E24UO25QZQL5Q589P1KUWXBXF76O5&workerId=A2Y2LYHBO1ZJF5&turkSubmitTo=https%3A%2F%2Fworkersandbox.mturk.com
+ -->
+
+<!-- jQuery and jQuery plugins -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+<script src="js/jquery.path.js"></script>
+<script src="js/sweetalert.min.js"></script>
+<link rel="stylesheet" type="text/css" href="css/sweetalert.css">
+
+<!-- Always include jQuery, Tim Turk Tools, experiment.css. Use https:// since
+	   this code will execute within the context of https://mturk.com, and browsers
+		 will give warnings for any access to non-https resources: -->
+
+<!-- <script src="https://timbrady.org/turk/TimTurkTools.js"></script> -->
+<script src="js/TimTurkToolsPlus.js"></script>
+
+<!-- Script to map HSet to specific set of conditions set up in matlab -->
+<script src="js/HSetOrderSetup.js"></script>
+
+<!-- Script to map group number to specific target/distractor groups -->
+<script src="js/StimulusMapping_shuffle_evenly.js"></script>
+
+<!-- Bootstrap -->
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+
+<!-- Experiment styles -->
+<link rel="stylesheet" type="text/css" href="css/experiment_cm.css"> 
+
+<script>
+
+var AssignmentId;
+
+/* When the document is ready, do some things:
+  -------------------------------------------- */
+$(document).ready(function() {
+
+	AssignmentId = GetAssignmentId();
+	
+		// get group num:
+	console.log("HSetNumber = " + HSetNumber);
+	
+	/* Set the assignment ID hidden input to the Turk assignment ID (required by Turk): */
+	$('#assignmentId').val(AssignmentId);
+
+	/* NONE = testing in browser; ASSIGNMENT_ID_NOT_AVAILABLE=on turk, but hasn't accepted the hit; otherwise, hit accepted */
+	if (!IsOnTurk() && AssignmentId == "NONE") {
+  		AssignmentId = prompt("Doesn't look like you are on Turk, so you're probably testing. Enter an ID to save your data with:", "assignmentId");
+	} else if (AssignmentId == "ASSIGNMENT_ID_NOT_AVAILABLE") {
+		$("a.startExperimentButton").addClass('disabled');
+		$("a.startExperimentButton").css({"pointer-events":"none"});
+		$("[data-toggle='tooltip']").tooltip();
+		console.log("assignment id not available");
+	} else {
+		$("a.startExperimentButton").css({"pointer-events":"auto"});
+		$("a.startExperimentButton").removeClass('disabled');
+		$("[data-toggle='tooltip']").tooltip('destroy');
+		console.log("hit accepted!");
+	}
+
+	/* set the submit location to either "actual mturk" or "sandbox" */
+	$("#turkSubmit").attr('action' , GetSubmitLocation() );
+
+	 // load all images the beginning
+	 for (var i=0; i<Cond2src.length; i++) {
+		  $("#img" + i + "-1").attr('src', Cond1src[i]);
+		  $("#img" + i + "-2").attr('src', Cond2src[i]);
+	}
+
+});
+
+// get groupNum
+function GetHSetNum() {
+	var HSetNum = turkGetParam('HSetNum', '111' );
+	return HSetNum;
+}
+
+
+/* Set up all the general variables:
+  -------------------------------------------- */
+
+// assuming your data are in /experiments/<experimenter>/<experiment>
+// if you want this same code to work on the server and on your local machine,
+// make sure to use this folder structure, e.g., /experiments/gaa/Demo1
+
+var pathParts = window.location.pathname.split("/");
+var tmpIndex = pathParts.indexOf("experiments");
+var experimenter = pathParts[tmpIndex + 1];
+var experimentName = pathParts[tmpIndex + 2];
+var server = 'https://scorsese.wjh.harvard.edu';
+var HSetNumber = GetHSetNum();
+var HSetConds = ExtractThisHSet(HSetNumber);
+var Cond1 = GetImageList1(HSetConds);
+var Cond2 = GetImageList2(HSetConds);
+var startExperimentTime = new Date(); //time page was loaded
+var trialStruct = Shuffle(GenerateTrials());  // the list of trials to show
+var curTrial = 0; //current trial, 0-indexed
+var Cond1src = GetImageListsrc1(Cond1);
+var Cond2src = GetImageListsrc2(Cond2);
+
+ 
+
+/* Generate a trialStruct:
+  -------------------------------------------- */
+//   CM: This randomizes, in each trial, the position of the target, and generates a trialStruct that saves information about the POSITION of the target. 
+function GenerateTrials() {
+	var numTrialsPerCond = 1; // 16
+	var trialStruct = [];
+	// "5"/53 is deg0 (index 0), "6"/54 is 60 (index 1), "1"/49 is deg120 (index 2), "2"/50 is deg180(index 3), "3"/51 is deg240 (index 4), "4"/52 is deg300 (index 5)
+	var KeypressVec = [53, 54, 49, 50, 51, 52];
+	var PosDescription = ['img0',  'img60', 'img120', 'img180', 'img240', 'img300']; // name of positions, also name of "class" with which they are referenced later
+	
+	for (var ind=0; ind<Cond1.length; ind++) { // for each condition... 		 	 
+		 	  for (var indLoc=0; indLoc<6; indLoc++) { //for each location in array
+				for (var j=0; j<numTrialsPerCond; j++) { // generate numTrialsPerCond
+					 /* Now lets push it all into the trialStruct: */
+					 trialStruct.push ({
+			    		"CondTarget": Cond1[ind],              /*this is the name of the object that is the target*/
+			    		"CondDist": Cond2[ind],                /*this is the name of the object that is the distractor*/
+			    		"srcT" : "../StimuliSets/ExploringObjects72-squared-3-luminance/"+Cond1[ind],
+  						"srcD" : "../StimuliSets/ExploringObjects72-squared-3-luminance/"+Cond2[ind],
+			    		'TargetIndex': indLoc,                   /* this is the index in the 6-value position vector of the target (NB: first value is at index "0")*/
+			    		"KeyTarget": KeypressVec[indLoc],
+						'TargetPosition': PosDescription[indLoc], /* this is the class name of the target for this trial, to track which object will be the target: */
+						});      
+					}
+			}
+		}
+		//Now add the situations where T/D has been reversed
+		for (var ind=0; ind<Cond1.length; ind++) { // for each condition... 		 	 
+		 	  for (var indLoc=0; indLoc<6; indLoc++) { //for each location in array
+				for (var j=0; j<numTrialsPerCond; j++) { // generate numTrialsPerCond
+					 /* Now lets push it all into the trialStruct: */
+					 trialStruct.push ({
+			    		"CondTarget": Cond2[ind],              /*this is the name of the object that is the target*/
+			    		"CondDist": Cond1[ind],                /*this is the name of the object that is the distractor*/
+			    		"srcT" : "../StimuliSets/ExploringObjects72-squared-3-luminance/"+Cond2[ind],
+  						"srcD" : "../StimuliSets/ExploringObjects72-squared-3-luminance/"+Cond1[ind],
+			    		'TargetIndex': indLoc,                   /* this is the index in the 6-value position vector of the target (NB: first value is at index "0")*/
+			    		"KeyTarget": KeypressVec[indLoc],
+						'TargetPosition': PosDescription[indLoc], /* this is the class name of the target for this trial, to track which object will be the target: */
+						});      
+					}
+			}
+		}
+			
+		
+	return trialStruct;
+}
+
+
+/* They clicked the start experiment button: */
+function StartExperiment() {
+  $('#instructions').hide();  
+  $('body').css('cursor', 'none');
+  $("#instSart").show();
+  $(document).bind("keypress.respond", function(e) { 
+       if  (e.which==32) {
+		      $(document).unbind("keypress.respond"); // stop waiting for key
+  			  $("#instSart").hide();
+			  ShowTrial();
+	    };
+  	});
+}
+
+
+
+function ShowProgress(curTrial) {
+    document.getElementById("p1").innerHTML = curTrial+1;
+    document.getElementById("p2").innerHTML = trialStruct.length;
+    $(".progress").show();      
+}
+
+
+
+/* Show the current trial (available in global variable curTrial): */
+function ShowTrial() {
+	var thisLoc = trialStruct[curTrial].TargetPosition;
+	var thisImageT = trialStruct[curTrial].srcT;
+	var thisImageD = trialStruct[curTrial].srcD;
+    
+    
+	$(".imgs").attr('src', thisImageD);
+	$("#" + thisLoc).attr('src', thisImageT);
+  //   document.getElementById("img120").src = trialStruct["srcT"]
+
+      
+     var fixationDur = 1000;
+     // show fixation
+	//fixation for 500 ms   
+     setTimeout(function() {
+     	$('.fixationBox').show();
+	 },500);
+
+	//ShowSearchDisplay;
+     setTimeout(function() {
+      	$("#fixationBox").hide();
+      	$('#instrucKeys').show(); //instructions for later trial are already presented, to prepare participants...
+      	$('#task1').show();  //show the first part of the trial, when images are presented.
+      	WaitFirstKeypress(curTrial)
+     }, fixationDur);
+     
+	 ShowProgress(curTrial) 
+
+}
+         
+
+function WaitFirstKeypress(curTrial){	    
+	      /* Now, wait for a keypress, but stop if 5 seconds have passed: */
+    	var Warningid =  setTimeout(function() {   //timer for 5 seconds to find object!
+        	$(document).unbind("keypress.respond"); // stop waiting for key (spacebar in this case)
+           //if he takes more than 5 seconds, make him do the trial all over again
+            console.log("too slow :(");
+            trialStruct[curTrial].slowresponse1 = 1;
+    		$('#instrucKeys').hide(); //hide key instructions
+        	$('#task1').hide(); //hide second part of trial
+            $('#warning').show(); //hide second part of trial             
+
+            $(document).bind("keypress.respond", function(e) {
+        		if (e.which==49) {
+          	 		$(document).unbind("keypress.respond"); // stop waiting for key
+             		$('#warning').hide(); //hide second part of trial   
+            		ShowTrial();
+           	 	} 
+           	 });
+           	 
+         },5000);  
+	 
+      var startRT = new Date();	 // And start the timer on their RT:
+     
+       $(document).bind("keypress.respond", function(e) {
+            if  (e.which==32) {
+                 
+                 clearTimeout(Warningid); //clear TimeOut object if it took you less than 5 seconds to repond
+                 trialStruct[curTrial].slowresponse1 = 0;
+            	 $(document).unbind("keypress.respond"); // stop waiting for key
+				  trialStruct[curTrial].rt = new Date() - startRT
+			 	 console.log("responded to part 1!");
+			 	 
+			 	  
+			 	  var thisLoc = trialStruct[curTrial].TargetPosition;
+			 	  var thisImageT = trialStruct[curTrial].srcT;
+	              var thisImageD = trialStruct[curTrial].srcD;
+				  $(".imgs").attr('src', "../StimuliSets/mask.jpeg");
+				  $("#" + thisLoc).attr('src', "../StimuliSets/mask.jpeg");
+				 
+				 StartSecondTask(curTrial) 				  
+				}  
+		});
+
+}
+
+function StartSecondTask(curTrial){
+
+setTimeout(function() {
+			 	  $('#instrucKeys2').show(); //show instruction to click on image
+				  $('#task2').show(); //show second part of the trial, when no images are presented 
+ 		 		  
+ 		 		  $('#instrucKeys').hide(); //hide instructions to press key
+				  $('#task1').hide();    //hide first part of the trial
+				  
+				   WaitSecondKeypress(curTrial) 
+ 		     }, 250);
+ 		     
+ 		     }
+
+function WaitSecondKeypress(curTrial){
+	      var thisTargetKey = trialStruct[curTrial].KeyTarget;            
+			  /* Now, wait for a keypress, but stop if 5 seconds have passed: */
+			var Warningid2 =  setTimeout(function() {   //timer for 5 seconds to find object!
+			$(document).unbind("keypress.respond"); // stop waiting for key (spacebar in this case)
+			  //if he takes more than 5 seconds, make him do the trial all over again
+				console.log("too slow :(");
+				trialStruct[curTrial].slowresponse2 = 1;
+				$('#instrucKeys2').hide(); //hide key instructions
+				$('#task2').hide(); //hide second part of trial
+				$('#warning').show(); //hide second part of trial             
+
+				$(document).bind("keypress.respond", function(e) {
+				   if (e.which==49) {
+					 $(document).unbind("keypress.respond"); // stop waiting for key
+					 $('#warning').hide(); //hide second part of trial   
+					 ShowTrial();
+					} 
+				});
+		 
+				},10000);  
+          
+          
+		   //Response Mapping:
+		  // "5"/53 is deg0 (index 0), "6"/54 is 60 (index 1), "1"/49 is deg120 (index 2), "2"/50 is deg180(index 3), "3"/51 is deg240 (index 4), "4"/52 is deg300 (index 5). 
+			   $(document).bind("keypress.respond", function(e) {
+						if (e.which==49 || e.which==50 || e.which==51 || e.which==52 || e.which==53 || e.which==54) { // if it is any of the 1-6 values,
+							clearTimeout(Warningid2); //clear TimeOut object if it took you less than 5 seconds to repond
+							trialStruct[curTrial].slowresponse2 = 0;
+							$(document).unbind("keypress.respond"); // stop waiting for keys
+							console.log("responded to part 2!");
+							trialStruct[curTrial].answer2 = e.which;                        
+							$('#instrucKeys2').hide(); //hide key instructions
+							$('#task2').hide(); //hide second part of trial
+								
+								if (e.which==thisTargetKey) { // if it is target...
+								trialStruct[curTrial].accurate = 1;
+								console.log("correct!");
+							  var ErrorDur = 0000;
+								} else { // if it is not target...
+								 trialStruct[curTrial].accurate = 0;
+								 console.log("wrong!");
+								 var ErrorDur = 3000;
+								 //delay three seconds
+								 $('#errordelay').show(); //hide second part of trial
+								  setTimeout(function() {
+								  $('#errordelay').hide(); //hide second part of trial
+								  },ErrorDur);
+								}     						
+							EndTrial(ErrorDur)
+		                }
+        });
+}	
+
+function EndTrial(ErrorDur){
+			setTimeout(function() {          				 
+						  curTrial++; //increase global trial counter
+ 						  if (curTrial < trialStruct.length) { //this goes out of iteration...
+							ShowTrial();
+							 } else {
+						  Done(); //finished!
+							}    
+							},ErrorDur); 
+}
+
+
+/* Done with the experiment; show them a comment box and wait for them to hit Save: */
+function Done() {
+  $('#task2').hide();
+  $('#done').show();
+  $('body').css('cursor', 'auto');
+  
+}
+
+/* Save the data to the server (choose what to save): */
+function SaveData() {
+	/* Hide everything in the 'done' div, and replace it with 'saving...': */
+  $('#done').children().hide();
+  $('#saving').show();
+
+	/* How long did they take to do the HSet, inclusive of reading instructions, etc? */
+  var newDate = new Date();
+  var totalTime = newDate - startExperimentTime;
+
+	/* What things to save: */
+  d = {
+    "assignmentId": AssignmentId,
+    "workerID": GetWorkerId(),
+    "curTime": newDate.today() + " @ " + newDate.timeNow(), //submission time
+    "userAgent": navigator.userAgent, //browser and version
+    "windowWidth": $(window).width(), //size of window HSet was completed in
+    "windowHeight": $(window).height(),
+    "screenWidth": screen.width, //size of their monitor
+    "screenHeight": screen.height,
+    "totalTime": totalTime,  // time it took to complete the HSet
+    "comments": $('#comments').val(), // their comments
+    "TotalDataset": "12", //hardcoded
+    "Conditions1":  Cond1,
+    "Conditions2": Cond2,
+    "Condition": Cond1 + "-" + Cond2,//error: should have saved by trial!
+    "HSetNumber": HSetNumber,
+    "trialStruct": trialStruct //the trialStruct with all the data and conditions
+  };
+
+  var fileId = GetWorkerId() + "_" + AssignmentId;
+  SendToServer(fileId, d);
+}
+
+/* Send the data to the server as JSON: */
+function SendToServer(id, curData) {
+  var dataToServer = {
+    'id': id, //filename to save the data with
+    'experimenter': experimenter, // experimenter folder to save it in
+    'experimentName': experimentName, //directory to save it in
+    'curData': JSON.stringify(curData) // data to save
+  };
+
+	/* Post the data to the server, using https:// or it will fail if run
+	 from within Turk: */
+  $.post(server + "/turk/tools/save.php",
+    dataToServer,
+		// Whether the data gets saved or not, submit the form to Turk:
+    function(data) {
+    	//console.log(data);
+      	document.forms[0].submit();
+    }
+  ).fail(function(data) {
+  		//console.log(data);
+      	document.forms[0].submit();
+  });
+}
+
+
+</script>
+</head>
+<body>
+
+<!-- Wrap the entire experiment in a form. Always start the form with a hidden input for the
+		 Turk assignment ID that we'll fill in with their real assignment ID in Javascript -->
+<!-- <form id="turkSubmit" action="https://www.mturk.com/mturk/externalSubmit" method="post" autocomplete="off"> -->
+<form id="turkSubmit" action="https://workersandbox.mturk.com/mturk/externalSubmit" method="post" autocomplete="off">
+<input type="hidden" name="assignmentId" id="assignmentId" value="">
+<input type="submit" value="Submit" name="submitButton" id="submitButton" style="display: none">
+
+
+<!-- text to participant -->
+<div align="center" id="instSart">Ready to start? Press the <b>spacebar</b> when ready.</div>
+<!-- <div align="center" id="instrucKeys">Press the <b>spacebar</b> when you see the <b>different</b> object, then press the number key for where it was</div> -->
+<!-- <div align="center" id="instrucKeys2">Press the <b>spacebar</b> when you see the <b>different</b> object, then press the number key for where it was</div> -->
+<!-- <div align="center" id="instrucKeys">Press the <b>spacebar</b> when you see the <b>different</b> object</div> -->
+<!-- <div align="center" id="instrucKeys2">Where was it?</div> -->
+<div align="center" id="warning">Ops, looks like you're taking longer than normal! Press <b>1</b> when you're ready, and we'll start from the last trial. Remember, press the <b>spacebar</b> when you see the <b>different</b> object, then press the number key for where it was.</div>
+<div align="center" id="errordelay">Ops, that was an error! Be fast first, accurate second.</div>
+
+<div class="progress"> Trial <b id="p1">...</b> of  <b id="p2">...</b> </div>
+
+
+<p></p>
+	<div  id="task1" class='circle-container'>
+<!-- TO DO: could I just "attach" the name of the condition/distractors produced by GenerateTrials to this section and upload the corresponding image? -->
+    <a href='#' class='center'><img id='fixation' class='fixation' src='../StimuliSets/fixation/fixationG.png'></a>
+    <a href='#' class='deg0'><img id='img0' class='imgs'></a>
+    <a href='#' class='deg60'><img id='img60' class='imgs' ></a>
+    <a href='#' class='deg120'><img id='img120' class='imgs' ></a>
+    <a href='#' class='deg180'><img id='img180' class='imgs'></a>
+    <a href='#' class='deg240'><img id='img240' class='imgs' ></a>
+    <a href='#' class='deg300'><img id='img300' class='imgs'></a>
+    <img id='circleborder' >
+  </div>
+<p></p>
+
+
+
+<p></p>
+	<div  id="task2" class='circle-container'>
+	<img id='circleborder' >
+    <a href='#' class='center'><img id='fixation' class='fixation' src='../StimuliSets/fixation/fixationG.png'></a>
+    <a href='#' class='deg0'>  <img id='emptysquare'><div id="emptysquaretext">5</div></a>
+    <a href='#' class='deg60'> <img id='emptysquare'><div id="emptysquaretext">6</div></a>
+    <a href='#' class='deg120'><img id='emptysquare'><div id="emptysquaretext">1</div></a>
+    <a href='#' class='deg180'><img id='emptysquare'><div id="emptysquaretext">2</div></a>
+    <a href='#' class='deg240'><img id='emptysquare'><div id="emptysquaretext">3</div></a>
+    <a href='#' class='deg300'><img id='emptysquare'><div id="emptysquaretext">4</div></a>    
+    </div>
+<p></p>
+    
+<!--     <div align="center" id="fixationBox">press z to start the next trial</div> -->
+<div  class="fixationBox" id="fixationBox">
+    <a href='#' class='center'><img id='fixation' class='fixation' src='../StimuliSets/fixation/fixationG.png'></a>
+    </div>
+
+
+
+
+<!-- Standard post-experiment comment box (initially hidden): -->
+<div id="done">
+  <div id="doneText">Done! Thanks!<br><br>Any comments for us? (Was it fun? Any technical difficulties?)<br><br><textarea name="comments" id="comments" style="width: 300px; height: 200px"></textarea><br><br>
+  <a href="javascript:SaveData()" id="timSubmit">Submit</a>
+  </div><div id="saving">Saving . . .</div>
+</div>
+
+
+
+
+<!-- Instructions: -->
+<div id="instructions" class="instructionsDiv">
+  <p> <b>Find the object that is not like the others, as fast as possible.</b><p>
+    <p align="center"><img src="../StimuliSets/SearchTask_examples/instruc0_shuffle.png"  width=1000></p>
+  <p> 1. Start by looking at the center of the screen. </p>
+  <p> 2. Find the object that is not like the others, and then <b>PRESS THE SPACE BAR AS FAST AS YOU CAN</b>.</p>
+  <p> 3. Press the number key where the object was. No need to rush.</p>
+  <p> The next trial will start automatically after you respond.</p>
+  <p></p><br><br>
+  <p>This HSet takes less than 2 minutes.</p>
+  <p>Try to do the whole thing without stopping. </p>
+  <p>However, if you take longer than expected to respond, the experiment will pause until you're ready!</p>
+  <p>You can do more than one HSet of this kind, but try avoiding HSets with the same exact objects as the previous ones!</p>
+  <p></p><br><br>
+
+  <div id="consentForm" class="instructionsDiv">
+ <p> <b>Consent to Participate in Research:</b><p>
+  <p>By answering the following questions, you are participating in a study being performed by cognitive scientists in the Harvard University Psychology Department.
+   By participating you are confirming that you are over 18 years of age and have normal or corrected-to-normal vision.
+  <p>Your participation in this research is completely voluntary. If you change your mind, you may stop any time. Refusal to participate or stopping your participation will involve no penalty or loss of benefits to which you are otherwise entitled. Your anonymity is assured; the researchers who have requested your participation will not receive any personal information about you. The data we collect will not be stored with any information about your identity, and no video or audio recording will be taken. </p>
+  <p>The purpose of this research is to explore how we recognize the visual world around us and how our knowledge of these objects, places, and actions are organized in the mind.
+  You will be asked to look at images on a video display, and in some cases listen to accompanying sounds, and give responses with key presses or mouse-movements. Your participation will take approximately 1-30 minutes to complete. For participating in this experiment, you will be compensated as described the HSet.</p>
+  There are minimal anticipated risks associated with participating in this study. The effects of participating should be comparable to those you would experience during typical use of a computer monitor and mouse or keyboard, for a comparable amount of time.
+  <p>For questions, concerns, or complaints that are not being addressed by the researcher, or research-related harm contact: Committee on the Use of Human Subjects in Research at Harvard University.  Address: Smith Campus Center, 1350 Massachusetts Avenue, Suite 935, Cambridge, MA 02138. E-mail Address: cuhs@harvard.edu</p>
+  <p>By continuing, you are confirming that you understand these instructions and conditions of participation.</p>
+  </div>
+  <p></p><br><br>
+
+  <div id="LoadImages"  class="instructionsDiv">
+    <img id='img0-1'  class='loadimgs' alt="" />
+    <img id='img1-1'  class='loadimgs' alt="" />
+    <img id='img2-1'  class='loadimgs' alt="" /> 
+<!--     <img id='img3-1'  class='loadimgs' alt="" /> -->
+  <!-- 
+  <img id='img4-1'  class='loadimgs' alt="" />
+    <img id='img5-1'  class='loadimgs' alt="" />
+    <img id='img6-1'  class='loadimgs' alt="" />
+    <img id='img7-1'  class='loadimgs' alt="" />
+    <img id='img8-1'  class='loadimgs' alt="" />
+    <img id='img9-1'  class='loadimgs' alt="" />
+    <img id='img10-1' class='loadimgs' alt="" />
+    <img id='img11-1' class='loadimgs' alt="" />
+	
+ -->
+     <br> 
+    <img id='img0-2'  class='loadimgs' alt="" />
+    <img id='img1-2'  class='loadimgs' alt="" />
+    <img id='img2-2'  class='loadimgs' alt="" />
+<!--     <img id='img3-2'  class='loadimgs' alt="" /> -->
+   <!-- 
+<!--  <img id='img4-2'  class='loadimgs' alt="" /> 
+<!-- 
+    <img id='img5-2'  class='loadimgs' alt="" />
+    <img id='img6-2'  class='loadimgs' alt="" />
+    <img id='img7-2'  class='loadimgs' alt="" />
+    <img id='img8-2'  class='loadimgs' alt="" />
+    <img id='img9-2'  class='loadimgs' alt="" />
+    <img id='img10-2' class='loadimgs' alt="" />
+   <im
+ g id='img11-2' class='loadimgs' alt="" /> -->
+   
+   <br><br>
+   
+   <p class="seeAllIms"> If any of the 6 images above are not showing, please do not do the experiment.<p>
+    </div>
+  
+    <p></p><br><br>
+  
+  <div class="submitButtonTooltip" data-toggle='tooltip' data-placement='bottom' title='please accept the hit first'>
+	<p style='text-align: center'><a href='javascript:StartExperiment()' class='startExperimentButton'>Start Experiment</a></p>
+  </div>
+  
+</body>
+</html>
